@@ -5,8 +5,7 @@ import scipy.linalg as slg
 import numpy.random as nr
 
 '''
-Collection of functions for use in statisticall analysis of gridded data sets.
-    -eof: gets the empirical orthogonal function of a matrix
+Collection of functions that use matrix analysis statistics of gridded data sets.
 
  
     
