@@ -1,13 +1,10 @@
 '''
-These functions can perform basic analysis (detrending, climatology removal, etc) on a gridded data set
+These functions can perform basic analysis (detrending, climatology removal, etc) on a gridded data set, including calculating 
+correlation and regression maps, which look at every thing in the grid and all of that.
 '''
 import numpy as np
 import numpy.linalg as nlg
-import haditools as ht
-import ertools as reader
-import matrixtools as mt
 import statstools as st
-import timeseriestools as ts
 import scipy.interpolate as spi
 import scipy.stats as sps
 import xarray as xr
@@ -79,92 +76,86 @@ def annualScaleRegion(X):
     return S
 
 #===============================================================================================
-#Developing a correlation map for a grid and a time series
-def corrGrid(u,X):
+#Developing a correlation map for a grid and a time series. This includes an option to include 
+def corrGrid(u,X,addSig=False):
     (nt,nx,ny) = X.shape
     corrs = np.zeros((nx,ny))
-
-    for i in range(nx):
-        for j in range(ny):
-            if(np.isnan(X[0,i,j])):
-                corrs[i,j] = np.nan
-            else:
-                corrs[i,j] = np.corrcoef(u,X[:,i,j])[0,1]
-
-    return corrs
-#===============================================================================================
-#Getting the correlation map between a grid and a time series that includes 95% P-values
-def pearsonGrid(u,X):
-
-    (time,rows,cols) = X.shape
-
-    corMap = np.zeros((rows,cols))
-    pvalMap = np.zeros((rows,cols))
-
-    for i in range(rows):
-        for j in range(cols):
-            if(np.isnan(X[0,i,j])):
-                corMap[i,j] = np.nan
-                pvalMap[i,j] = np.nan
-            else:
-
-                ptest = sps.pearsonr(u,X[:,i,j])
-                corMap[i,j] = ptest[0]
-                pvalMap[i,j] = ptest[1]
-
-    return corMap, pvalMap
+    pvals = np.zeros((nx,ny))
+    if (nt == X.shape[0]):
+        for i in range(nx):
+            for j in range(ny):
+                if(np.isnan(X[0,i,j])):
+                    corrs[i,j] = np.nan
+                    pvals[i,j] = np.nan
+                else:
+                    res = sps.pearsonr(u,X[:,i,j])
+                    corrs[i,j] = res[0]
+                    pvals[i,j] = res[1]
+        if (addSig):
+            return corrs, pvals
+        else:
+            return corrs
+    else:
+        print('Error: The time lengths do not align')
 
 #===============================================================================================
 #Getting the correlation map between two grids. 
 # Note: both grids have to have the same dimensions
-def pearson2Grids(X,Y):
+def corr2Grids(X,Y):
 
-    (rows,cols) = X.shape[1:]
+    if (X.shape == Y.shape):
+        (rows,cols) = X.shape[1:]
 
-    corMap = np.zeros((rows,cols))
-    pvalMap = np.zeros((rows,cols))
+        corMap = np.zeros((rows,cols))
+        pvalMap = np.zeros((rows,cols))
 
-    for i in range(rows):
-        for j in range(cols):
-            if(np.isnan(X[0,i,j]) or np.isnan(Y[0,i,j])):
-                corMap[i,j] = np.nan
-                pvalMap[i,j] = np.nan
-            else:
+        for i in range(rows):
+            for j in range(cols):
+                if(np.isnan(X[0,i,j]) or np.isnan(Y[0,i,j])):
+                    corMap[i,j] = np.nan
+                    pvalMap[i,j] = np.nan
+                else:
 
-                ptest = sps.pearsonr(X[:,i,j],Y[:,i,j])
-                corMap[i,j] = ptest[0]
-                pvalMap[i,j] = ptest[1]
+                    ptest = sps.pearsonr(X[:,i,j],Y[:,i,j])
+                    corMap[i,j] = ptest[0]
+                    pvalMap[i,j] = ptest[1]
 
-    return corMap, pvalMap
+        return corMap, pvalMap
+    else:
+        print('Error: The shapes of the two grids do not align')
 
 #===============================================================================================
 #Regressing gridded data onto a time series
 def regressGrid(X,y):
-    (rows,cols) = X.shape[1:]
-    M = np.zeros((rows,cols))
+    if(X.shape[0] == len(y)):
+    
+        (rows,cols) = X.shape[1:]
+        M = np.zeros((rows,cols))
 
-    y_is_series = (len(y.shape) == 1)
+        y_is_series = (len(y.shape) == 1)
 
-    for i in range(rows):
-        for j in range(cols):
+        for i in range(rows):
+            for j in range(cols):
 
-            if(np.isnan(X[:,i,j]).any()):
-                M[i,j] = np.nan
-            else:
-                x_ij = np.copy(X[:,i,j])
-                
-                if(y_is_series):
-                    y_ij = np.copy(y)
+                if(np.isnan(X[:,i,j]).any()):
+                    M[i,j] = np.nan
                 else:
-                    y_ij = np.copy(y[:,i,j])
-                
-                b = np.polyfit(x_ij,y_ij,1)
+                    x_ij = np.copy(X[:,i,j])
+                    
+                    if(y_is_series):
+                        y_ij = np.copy(y)
+                    else:
+                        y_ij = np.copy(y[:,i,j])
+                    
+                    b = np.polyfit(x_ij,y_ij,1)
 
-                M[i,j] = np.copy(b[0])
+                    M[i,j] = np.copy(b[0])
 
-                del(b, x_ij, y_ij)
+                    del(b, x_ij, y_ij)
 
-    return M
+        return M
+    else:
+        print('Error: Time spans of the series and the grid differ.')
 #===============================================================================================
 #Getting a month out of a set of gridded data in an np.ndarray format
 def selectMonth(x,month='dec'):

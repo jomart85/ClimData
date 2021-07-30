@@ -53,7 +53,6 @@ def seriesRMStest(X,eofs,lon,lat,globe=[],removeGlobe=True,npoly=2):
     ldModes = np.array([])
 
     while(stop <= time):
-        #print('Iteration: ' + str(t+1))
         
         #OLD WAY
         #Making the testing data for a while
@@ -120,10 +119,6 @@ def seriesRMStest(X,eofs,lon,lat,globe=[],removeGlobe=True,npoly=2):
 
     rms = rms/rmsClim
 
-    '''
-    pt.plotSeriesRMS(rms)
-
-    pt.show()'''
     return rms
 #============================================================================================================
 #Getting the rms for the gridded data
@@ -244,8 +239,6 @@ def rmsRegionTest(X,eofs,lon,lat,globe=[],pullGlobe=True,npoly=2,smoothWindow=0)
 
         start += step
         stop += step
-
-    print(len(RMS))
     #RMS = RMS[1:]
     #RMS_clim = RMS_clim[1:]
 

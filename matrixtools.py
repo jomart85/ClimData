@@ -5,9 +5,7 @@ import scipy.linalg as slg
 import numpy.random as nr
 
 '''
-Collection of functions that use matrix analysis statistics of gridded data sets.
-
- 
+Collection of functions for use in statisticall analysis of gridded data sets.
     
 '''
 
@@ -24,50 +22,54 @@ Collection of functions that use matrix analysis statistics of gridded data sets
 #       each column of F represents a PC time series 
 #   E (np.ndarray): set of the Empirical Orthogonal
 def eof(X,k=1,weight=[],includeVarExp=True):
-    S = np.copy(X)
-    if(len(X.shape)==3):
-        (time,rows,cols) = X.shape
-        S.shape = (time,rows*cols)
+    try:
 
-    if(weight==[]):
-        W = np.ones(rows*cols)
-    else:
-        W = np.copy(weight) ** .5
-        W.shape = (W.shape[0]*W.shape[1],)
-    #Scaling everything by the weight matrix now
-    S = S*W
-    nonNum = np.isnan(S)
-    ocn = np.isnan(S[0]) == False
-    #Now,checking this beast for any non number values
-    if(nonNum.any()):
-        S = S[:,np.isnan(S[0,:])==False]
+        S = np.copy(X)
+        if(len(X.shape)==3):
+            (time,rows,cols) = X.shape
+            S.shape = (time,rows*cols)
 
+        if(weight==[]):
+            W = np.ones(S.shape[1])
+        else:
+            W = np.copy(weight) ** .5
+            W.shape = (W.shape[0]*W.shape[1],)
+        #Scaling everything by the weight matrix now
+        S = S*W
+        nonNum = np.isnan(S)
+        ocn = np.isnan(S[0]) == False
+        #Now,checking this beast for any non number values
+        if(nonNum.any()):
+            S = S[:,np.isnan(S[0,:])==False]
+
+        
+        #SVD of A
+        [U,d,V] = slg.svd(S)
+
+        #Getting the degrees of freedom
+        a = np.sqrt(S.shape[0]-1)
+
+        D = np.zeros(S.shape)
+
+        for i in range(len(d)):
+            D[i,i] = d[i]
+
+        F = U*a
+
+        E = np.dot(D,V)/a
+
+        F = F[:,:k]
+
+        E = E[:k,:]/W[ocn]
+        
+        if(includeVarExp):
+            varexp = d[:k]*d[:k]/np.dot(d,d)
+            return F,E,varexp
+        else:
+            return F,E
     
-    #SVD of A
-    [U,d,V] = slg.svd(S)
-
-    #Getting the degrees of freedom
-    a = np.sqrt(S.shape[0]-1)
-
-    D = np.zeros(S.shape)
-
-    for i in range(len(d)):
-        D[i,i] = d[i]
-
-    F = U*a
-
-    E = np.dot(D,V)/a
-
-    F = F[:,:k]
-
-    E = E[:k,:]/W[ocn]
-    
-    if(includeVarExp):
-        varexp = d[:k]*d[:k]/np.dot(d,d)
-        return F,E,varexp
-    else:
-        return F,E
-
+    except nlg.LinAlgError:
+        print('Error: SVD did not converge')
 #==========================================================================================================
 #Function that construct the basic components of the Linear Inverse Model
 #Input:
@@ -137,7 +139,7 @@ def mic_mlr(X,Y):
     xmax = np.min([space_x,time])
     ymax = np.min([space_y,time])
 
-    [Fx,Ex,vx] = eof(X,xmax,)
+    [Fx,Ex,vx] = eof(X,xmax)
 #Function for Multiple Linear regression of the data X and Y (EOFs deterined by
 # mic_gaussian)
 def mlr(X,Y):
@@ -185,12 +187,17 @@ def mic_cca(Fx,Fy,xmax,ymax):
             rho = nlg.svd(Sxy)
             rho = rho[1]
 
-            #The penalty term nows
-            p = (n+1)*((i+j)/(n-i-j-2) - i/(n-i-2) - j/(n-j-2) )
+            try:
 
-            mic = np.sum(np.log(1-rho*rho)) + p
+                #The penalty term nows
+                p = (n+1)*((i+j)/(n-i-j-2) - i/(n-i-2) - j/(n-j-2) )
 
-            M[(i-1),(j-1)] = mic
+                mic = np.sum(np.log(1-rho*rho)) + p
+
+                M[(i-1),(j-1)] = mic
+            except ZeroDivisionError:
+                print('Error: One of the denominators in the penalty term is equal to 0')
+                break
     
 
     return M
@@ -217,62 +224,67 @@ def cca(X,Y, lon_x,lat_x,lon_y,lat_y):
     #   nx: The number of EOFs used for X
     #   ny: the number of EOFs used for Y
 
+    try:
+        makeArea = lambda lon,lat: np.outer(np.cos(lat*np.pi/180),np.ones(len(lon)))
 
-    makeArea = lambda lon,lat: np.outer(np.cos(lat*np.pi/180),np.ones(len(lon)))
+        space_x = np.sum(np.logical_not(np.isnan(X[0,:,:])))
+        space_y = np.sum(np.logical_not(np.isnan(Y[0,:,:])))
+        time  = X.shape[0]
 
-    space_x = np.sum(np.logical_not(np.isnan(X[0,:,:])))
-    space_y = np.sum(np.logical_not(np.isnan(Y[0,:,:])))
-    time  = X.shape[0]
+        xmax = np.min([space_x,time,30])
+        ymax = np.min([space_y,time,30])
 
-    xmax = np.min([space_x,time,30])
-    ymax = np.min([space_y,time,30])
+        area_x = makeArea(lon_x,lat_x)
+        area_y = makeArea(lon_y,lat_y)
 
-    area_x = makeArea(lon_x,lat_x)
-    area_y = makeArea(lon_y,lat_y)
+        [Fx,Ex] = eof(X-np.mean(X,axis=0),xmax,area_x,False)
 
-    [Fx,Ex] = eof(X-np.mean(X,axis=0),xmax,area_x,False)
+        [Fy,Ey] = eof(Y-np.mean(Y,axis=0),ymax,area_y,False)
 
-    [Fy,Ey] = eof(Y-np.mean(Y,axis=0),ymax,area_y,False)
+        M = mic_cca(Fx,Fy,xmax,ymax)
 
-    M = mic_cca(Fx,Fy,xmax,ymax)
+        nx,ny = np.where(M==np.min(M))
+        nx = nx[0] + 1
+        ny = ny[0] + 1
 
-    nx,ny = np.where(M==np.min(M))
-    nx = nx[0] + 1
-    ny = ny[0] + 1
+        dof = X.shape[0] - 1
+        
 
-    dof = X.shape[0] - 1
-    
+        #Truncating the EOFs based on the mutual information criteria
+        Fx = Fx[:,:nx]
+        Ex = Ex[:nx,:]
 
-    #Truncating the EOFs based on the mutual information criteria
-    Fx = Fx[:,:nx]
-    Ex = Ex[:nx,:]
+        Fy = Fy[:,:ny]
+        Ey = Ey[:ny,:]
 
-    Fy = Fy[:,:ny]
-    Ey = Ey[:ny,:]
+        #Getting the covariance matrix and its SVD to calculate the variates and the loading vectors
+        S_xy = np.dot(Fx.T, Fy)/dof
 
-    #Getting the covariance matrix and its SVD to calculate the variates and the loading vectors
-    S_xy = np.dot(Fx.T, Fy)/dof
-    [Qx,rho,Qy] = nlg.svd(S_xy)
+        
+        [Qx,rho,Qy] = nlg.svd(S_xy)
 
-    #Getting thhe variates associated with CCA
-    Rx = np.dot(Fx,Qx)
-    Ry = np.dot(Fy,Qy)
+        #Getting thhe variates associated with CCA
+        Rx = np.dot(Fx,Qx)
+        Ry = np.dot(Fy,Qy)
 
-    #Now, gathering the matrix of loading vectors
-    Px = np.zeros((nx,X.shape[1],X.shape[2])) * np.nan
-    Py = np.zeros((ny,Y.shape[1],Y.shape[2])) * np.nan
+        #Now, gathering the matrix of loading vectors
+        Px = np.zeros((nx,X.shape[1],X.shape[2])) * np.nan
+        Py = np.zeros((ny,Y.shape[1],Y.shape[2])) * np.nan
 
 
 
-    makeOcn = lambda V: np.logical_not(np.isnan(V[0,:,:]))
+        makeOcn = lambda V: np.logical_not(np.isnan(V[0,:,:]))
 
-    ocn_x = makeOcn(X)
-    ocn_y = makeOcn(Y)
+        ocn_x = makeOcn(X)
+        ocn_y = makeOcn(Y)
 
-    Px[:,ocn_x] = np.dot(Qx.T,Ex)
-    Py[:,ocn_y] = np.dot(Qy.T,Ey)
+        Px[:,ocn_x] = np.dot(Qx.T,Ex)
+        Py[:,ocn_y] = np.dot(Qy.T,Ey)
 
-    #Px = np.dot(Qx.T,Ex)
-    #Py = np.dot(Qy.T,Ey)
+        #Px = np.dot(Qx.T,Ex)
+        #Py = np.dot(Qy.T,Ey)
 
-    return {'Rx':Rx, 'Ry':Ry, 'Px':Px,'Py':Py, 'rho':rho , 'nx':nx, 'ny':ny, 'mic':M}
+        return {'Rx':Rx, 'Ry':Ry, 'Px':Px,'Py':Py, 'rho':rho , 'nx':nx, 'ny':ny, 'mic':M}
+        
+    except nlg.LinAlgError:
+        print('Error: The SVD of the covariance matrix did not converge.')
